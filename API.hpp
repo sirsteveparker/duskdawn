@@ -1,10 +1,25 @@
-#include "ESP8266_Utils_APIREST.hpp"
-
 extern bool currentState;
 extern bool requiredState;
 extern const char* VERSION;
 
 const char* PARAM_FILTER = "filter";
+
+int GetIdFromURL(AsyncWebServerRequest *request, String root)
+{
+  String string_id = request->url();
+  string_id.replace(root, "");
+  int id = string_id.toInt();
+  return id;
+}
+
+String GetBodyContent(uint8_t *data, size_t len)
+{
+  String content = "";
+  for (size_t i = 0; i < len; i++) {
+    content .concat((char)data[i]);
+  }
+  return content;
+}
 
 void getAll(AsyncWebServerRequest *request)
 {
@@ -60,7 +75,7 @@ void getStatus(AsyncWebServerRequest *request) {
   response.concat("\n</div>");
 //response.concat("\n</script></body></html>");
   request->send(200, "text/html", response);
-  Log.printf("REST status request from....%s\n",request->client()->remoteIP().toString().c_str());  
+  syslog.printf("REST status request from....%s\n",request->client()->remoteIP().toString().c_str());  
 }
 
 void postStatus(AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total)
@@ -74,7 +89,7 @@ void postStatus(AsyncWebServerRequest * request, uint8_t *data, size_t len, size
   if ( doc["force"] ) {
     String string_data = doc["force"];
     String message = string_data;
-    Log.printf("REST POST status(from %s).....%s\n",request->client()->remoteIP().toString().c_str(),message);
+    syslog.printf("REST POST status(from %s).....%s\n",request->client()->remoteIP().toString().c_str(),message);
     if ( string_data == "on") {
       requiredState = true ;
       request->send(200, "text/plain", message);
@@ -86,7 +101,7 @@ void postStatus(AsyncWebServerRequest * request, uint8_t *data, size_t len, size
     } 
   } else {
     String message = "<html><body><p>&#129300;</p></body></html>" ;
-    Log.printf("REST POST status(from %s).....%s\n",request->client()->remoteIP().toString().c_str(),message);
+    syslog.printf("REST POST status(from %s).....%s\n",request->client()->remoteIP().toString().c_str(),message);
     request->send(406, "text/html", message);
   }
 }
@@ -115,7 +130,7 @@ void postRequest(AsyncWebServerRequest * request, uint8_t *data, size_t len, siz
 
   String string_data = doc["data"];
   String message = "Create " + string_data;
-  Log.printf("%s\n",message);
+  syslog.printf("%s\n",message);
   request->send(200, "text/plain", message);
 }
 

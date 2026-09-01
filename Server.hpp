@@ -1,16 +1,4 @@
 AsyncWebServer server(80);
-#ifdef SYSLOG_HOST
-#include <SyslogStream.h>
-SyslogStream syslogStream = SyslogStream();
-syslogStream.setDestination(SYSLOG_HOST);
-syslogStream.setRaw(false); // wether or not the syslog server is a modern(ish) unix.
-#ifdef SYSLOG_PORT
-syslogStream.setPort(SYSLOG_PORT);
-#endif
-const std::shared_ptr<LOGBase> syslogStreamPtr = std::make_shared<SyslogStream>(syslogStream);
-Log.addPrintStream(syslogStreamPtr);
-Log.begin();
-#endif
 
 void homeRequest(AsyncWebServerRequest *request) {
    String response = "Outside Lights: ";
@@ -37,5 +25,5 @@ void InitServer()
 
   server.begin();
   Serial.println("HTTP server started");
-  Log.println("HTTP server started");
+  syslog.println("HTTP server started");
 }

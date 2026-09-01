@@ -14,29 +14,35 @@ Updates:
 #include <ESP8266WiFiMulti.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <Arduino.h>
+#include <PicoSyslog.h>
 #include <time.h>
 #include <sunset.h>
 #include <SSD1306Wire.h>
-#include <TLog.h>
 #include <ArduinoJson.h>
 #include <ArduinoJson.hpp>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
+
+#if defined(ESP32)
+#include <WiFi.h>
+#elif defined(ESP8266)
+#include <ESP8266WiFi.h>
+#else
+#error "This board is not supported."
+#endif
+
+PicoSyslog::Logger syslog("Duskdawn");
+
 #include "API.hpp"
 #include "Server.hpp"
 #include "config.hpp"
-
 
 #if SCREEN == 1
 SSD1306Wire  display(0x3C, D1, D2);   // Initialize OLED display
 #define RELAY D3
 #else       
 #define RELAY D1
-#endif
-
-#ifdef SYSLOG_HOST
-#include <SyslogStream.h>
-SyslogStream syslogStream = SyslogStream();
 #endif
 
 time_t nowtime;
@@ -122,21 +128,21 @@ void checkForUpdates()
     fwURL.concat(devID);
     String fwVersionURL = fwURL;
     fwVersionURL.concat( ".ver" );
-    Log.println( "Checking for firmware updates." );
-    Log.printf( "chipID: %s\n" , devID );
-    Log.print( "Firmware version URL:" );
-    Log.println( fwVersionURL );
+    syslog.println( "Checking for firmware updates." );
+    syslog.printf( "chipID: %s\n" , devID );
+    syslog.print( "Firmware version URL:" );
+    syslog.println( fwVersionURL );
 
     HTTPClient httpClient;
     httpClient.begin(client, fwVersionURL );
     int httpCode = httpClient.GET();
-    Log.printf("httpCode: %d\n",httpCode);
+    syslog.printf("httpCode: %d\n",httpCode);
     if ( httpCode == 200 ) {
       String bodyContent = httpClient.getString();
       StaticJsonDocument<200> doc;
       DeserializationError error = deserializeJson(doc, bodyContent);
       if (error) {
-          Log.printf("deserializeJson() failed: %s\n", error.c_str());
+          syslog.printf("deserializeJson() failed: %s\n", error.c_str());
           return;
       }
       // New format: Expect a boolean "Force" (default false) and a "Version" string
@@ -153,20 +159,20 @@ void checkForUpdates()
       String newVersion = "";
       if (doc.containsKey("Version")) newVersion = doc["Version"].as<String>();
 
-      Log.printf(" Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
-      Log.printf(" Firmware version: %s vs %s\n ",String(VERSION),newVersion);
+      syslog.printf(" Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
+      syslog.printf(" Firmware version: %s vs %s\n ",String(VERSION),newVersion);
 
       if ( forceUpdate || ( newVersion.length() > 0 && ! newVersion.equals( String(VERSION)))) {
         if (forceUpdate) {
-          Log.println("Forced update requested by server (.ver contains Force=true). Proceeding to update.");
+          syslog.warning.println("Forced update requested by server (.ver contains Force=true). Proceeding to update.");
         } else {
-          Log.println( "Preparing to update (version mismatch)" );
+          syslog.println( "Preparing to update (version mismatch)" );
         }
         // Constuct URL for new firmware
         String fwImageURL = fwURL;
         fwImageURL.concat( ".bin" );
-        Log.println( "Firmware Image File URL: ");
-        Log.println( fwImageURL);
+        syslog.println( "Firmware Image File URL: ");
+        syslog.println( fwImageURL);
         ESPhttpUpdate.rebootOnUpdate(true);
         // Update the firmware
         t_httpUpdate_return ret = ESPhttpUpdate.update( client, fwImageURL);
@@ -174,21 +180,21 @@ void checkForUpdates()
         // Error handling
         switch(ret) {
           case HTTP_UPDATE_FAILED:
-              Log.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+              syslog.error.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
               break;
 
           case HTTP_UPDATE_NO_UPDATES:
-               Log.println("HTTP_UPDATE_NO_UPDATES");
+               syslog.warning.println("HTTP_UPDATE_NO_UPDATES");
                break;
         } // end of switch
       } // end of: if ( forceUpdate || version mismatch)
      
       else {   // newVersion.equals ( VERSION ) 
-        Log.println( "Already on latest version and no force flag set" );
+        syslog.println( "Already on latest version and no force flag set" );
       }
     } //end of:  if ( httpCode == 200 )
     else  { // httpCode !== 200
-      Log.printf( "Firmware version check failed, HTTP response code: %d\n", httpCode );
+      syslog.error.printf( "Firmware version check failed, HTTP response code: %d\n", httpCode );
     }
     httpClient.end();
 }
@@ -210,19 +216,14 @@ void setup()
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
 
-    #ifdef SYSLOG_HOST
-    syslogStream.setDestination(SYSLOG_HOST);
-    syslogStream.setRaw(false); // wether or not the syslog server is a modern(ish) unix.
-    #ifdef SYSLOG_PORT
-    syslogStream.setPort(SYSLOG_PORT);
-    #endif
-    const std::shared_ptr<LOGBase> syslogStreamPtr = std::make_shared<SyslogStream>(syslogStream);
-    Log.addPrintStream(syslogStreamPtr);
-    #endif
+    syslog.server = SYSLOG_HOST;
+    //syslog.app = "Duskdawn";
+    // This log level will be used by default
+    syslog.default_loglevel = PicoSyslog::LogLevel::information;
 
-    Log.begin();
-    Log.println("Duskdawn light control starting....");
-    Log.printf("Current Version Number: %s\n",String(VERSION));
+
+    syslog.println("Duskdawn light control starting....");
+    syslog.printf("Current Version Number: %s \n",String(VERSION));
 
     #if SCREEN == 1
     lineptr[0] = &line0;
@@ -246,17 +247,17 @@ void setup()
     digitalWrite(RELAY, LOW);
     configTime(TIMEZONE * 3600, DST * 3600, "pool.ntp.org", "time.nist.gov");
     configTzTime("GMT0BST,M3.5.0/2,M10.5.0/3","pool.ntp.org");
-    Log.println("\nGathering time info");
+    syslog.println("Gathering time info");
     #if SCREEN == 1
       screenWrite();
     #endif
     delay(3000);
-    Log.println(String("MyIP:" + WiFi.localIP().toString()));
-    Log.println("Duskdawn API control starting....");
+    syslog.println(String("MyIP:" + WiFi.localIP().toString()));
+    syslog.println("Duskdawn API control starting....");
     currentState = onoroff();
-    Log.printf("REG currentState: %d\n",currentState);
+    syslog.printf("REG currentState: %d\n",currentState);
     requiredState = false;
-    Log.printf("REG requiredState: %d\n",requiredState);
+    syslog.printf("REG requiredState: %d\n",requiredState);
 
     InitServer();    
 }
@@ -271,9 +272,6 @@ void loop()
        Serial.print("Connecting to the WiFi");
        delay(250);
     }
-
-    Log.loop();
-
 
     struct tm * timeinfo;
     time(&nowtime);
@@ -295,7 +293,7 @@ void loop()
     if (currentDay != timeinfo->tm_mday) {
         sun.setCurrentDate(timeinfo->tm_year, timeinfo->tm_mon +1, timeinfo->tm_mday);
         currentDay = timeinfo->tm_mday;
-        Log.printf("Setting day of month to : %d\n", currentDay);
+        syslog.printf("Setting day of month to : %d\n", currentDay);
     }
     mpm = timeinfo->tm_hour * 60 + timeinfo->tm_min;
     sunrise = static_cast<int>(sun.calcCivilSunrise());
@@ -311,11 +309,11 @@ void loop()
 //    astrosunset = static_cast<int>(sun.calcAstronomicalSunset());
 //    customsunrise = sun.calcCustomSunrise(90.0);
 //    customsunset = sun.calcCustomSunset(90.0);
-    Log.printf("Time: %s\n",&timestr);
-    Log.printf("Sunrise at %02d:%02d\n",sunrise/60,sunrise%60);
-    Log.printf("Civil Sunset at %02d:%02d\n",sunset/60,sunset%60);
-    Log.printf("Nautical Sunset at %02d:%02d\n",nauticalsunset/60,nauticalsunset%60);
-    Log.printf("MinutesPastMidnight: %d\n",mpm);
+    syslog.printf("Time: %s\n",&timestr);
+    syslog.printf("Sunrise at %02d:%02d\n",sunrise/60,sunrise%60);
+    syslog.printf("Civil Sunset at %02d:%02d\n",sunset/60,sunset%60);
+    syslog.printf("Nautical Sunset at %02d:%02d\n",nauticalsunset/60,nauticalsunset%60);
+    syslog.printf("MinutesPastMidnight: %d\n",mpm);
         
     #if SCREEN == 1
     line2 = String("Time: " + String(timestr));
@@ -324,35 +322,35 @@ void loop()
     #endif
     
     if (requiredState == true ) {
-        Log.printf("Status: Force , sunrise: %d\n",sunrise);
-        Log.printf("Minutes until sunrise: %d\n",mus);
+        syslog.printf("Status: Force , sunrise: %d\n",sunrise);
+        syslog.printf("Minutes until sunrise: %d\n",mus);
     #if SCREEN == 1
         line5 = String("Status: Force");
     #endif
         digitalWrite(RELAY, HIGH);
     } 
     else if (mpm >= nauticalsunset && mpm < BEDTIME ) {
-        Log.printf("Status: ON #1 , sunrise: %d\n",sunrise);
+        syslog.printf("Status: ON #1 , sunrise: %d\n",sunrise);
         mus = (BEDTIME - mpm) + sunrise;
-        Log.printf("Minutes until sunrise: %d\n",mus);
+        syslog.printf("Minutes until sunrise: %d\n",mus);
     #if SCREEN == 1
         line5 = String("Status: ON #1");
     #endif
         digitalWrite(RELAY, HIGH);
     } 
     else if (mpm > RISETIME && mpm  <  sunrise) {
-        Log.printf("Status: ON #2 , sunrise: %d\n",sunrise);
+        syslog.printf("Status: ON #2 , sunrise: %d\n",sunrise);
         mus = (sunrise -mpm);
-        Log.printf("Minutes until sunrise: %d\n",mus);
+        syslog.printf("Minutes until sunrise: %d\n",mus);
     #if SCREEN == 1
         line5 = String("Status: ON #2");
     #endif
         digitalWrite(RELAY, HIGH);
     } 
     else {
-        Log.printf("Status: OFF , sunset: %d\n",nauticalsunset);
+        syslog.printf("Status: OFF , sunset: %d\n",nauticalsunset);
         mus = (nauticalsunset - mpm);
-        Log.printf("Minutes until sunset: %d\n",mus);
+        syslog.printf("Minutes until sunset: %d\n",mus);
     #if SCREEN == 1
         line5 = String("Status: OFF");
     #endif
@@ -360,7 +358,7 @@ void loop()
     }
 
     currentState = onoroff();
-    Log.printf("REG requiredState: %d, currentState: %d\n",requiredState,currentState);
+    syslog.printf("REG requiredState: %d, currentState: %d\n",requiredState,currentState);
 
     #if SCREEN == 1
     screenWrite();
@@ -371,14 +369,13 @@ void loop()
        sleeptime = int(LOOPWAIT);
     }
     checkForUpdates();
-    Log.println("Sleep for "+ String(sleeptime) + " minutes");
+    syslog.println("Sleep for "+ String(sleeptime) + " minutes");
     delay(60000 * sleeptime);
-    Log.println("Wake up for check");
+    syslog.println("Wake up for check");
     //if ( millis()  >= 86400000UL ) {
     if ( millis()  >= 604800000UL ) {
 	//call reset every 7 days (1 Week).
-        Log.println("Unit running for 7 days.... Calling reset to reboot unit");
-	Log.stop();
+        syslog.println("Unit running for 7 days.... Calling reset to reboot unit");
 	delay(10000);
         resetFunc(); 
     } 	

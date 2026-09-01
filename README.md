@@ -16,7 +16,6 @@ duskdawn is a lightweight ESP8266 firmware to control an outdoor/light relay bas
 - `OTAduskdawn.ino` — main firmware (control loop, sunrise/sunset calculations, OTA check).
 - `API.hpp` — REST API handlers (`/status` and basic `/item` handlers).
 - `Server.hpp` — HTTP server setup and route wiring.
-- `ESP8266_Utils_APIREST.hpp` — small helpers (payload parsing, URL id extraction).
 - `config-example.hpp` — example configuration (WiFi, lat/long, pins, timezones, OTA host info).
 
 ## Dependencies
@@ -33,7 +32,7 @@ Install these Arduino/ESP8266 libraries (used by the sketch):
 - TLog (logging wrapper)
 - ESP8266HTTPClient
 - ESP8266httpUpdate
-- (optional) SyslogStream if you set `SYSLOG_HOST`
+- Pico-Syslog
 
 ## Hardware
 
@@ -42,7 +41,6 @@ Install these Arduino/ESP8266 libraries (used by the sketch):
   - If `SCREEN` is `1` (OLED enabled), `OTAduskdawn.ino` defines `RELAY` as `D3`.
   - Otherwise `RELAY` defaults to `D1` unless overridden in your config.
 - Optional SSD1306 OLED (I2C) on D1 (SCL) and D2 (SDA) when `SCREEN == 1`.
-- Optional local syslog server for remote logging.
 
 **Security note:** OTA and REST endpoints are unauthenticated and intended for local/LAN use only. Do not expose the device directly to the internet without additional protections.
 
@@ -56,7 +54,7 @@ Install these Arduino/ESP8266 libraries (used by the sketch):
    - `BEDTIME` — minutes past midnight after which lights won't turn on (e.g. `1350` = 22:30)
    - `RISETIME` — minutes past midnight before which lights won't turn on (e.g. `360` = 06:00)
    - `LOOPWAIT` — default loop sleep time in minutes between checks
-   - `SYSLOG_HOST` and `SYSLOG_PORT` — optional syslog server
+   - `SYSLOG_HOST` — optional syslog server
    - `MODEL`, `VERSION` — firmware model and version strings used for OTA checks
    - `host`, `fwURLLoc`, `httpPort` — host and path where OTA metadata/images are served
 
