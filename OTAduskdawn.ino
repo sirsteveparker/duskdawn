@@ -8,6 +8,7 @@ Updates:
  5 Dec 2025 - Add a REST API . GET /status
 16 Mar 2026 - Add Over The Air updates v1.0.9
 24 Aug 2026 - Use Nautical Sunset instead of Civil v1.0.10
+ 1 Sep 2026 - Switch to use Pico-Syslog
 */
 
 #include <ESP8266WiFi.h>
@@ -130,8 +131,7 @@ void checkForUpdates()
     fwVersionURL.concat( ".ver" );
     syslog.println( "Checking for firmware updates." );
     syslog.printf( "chipID: %s\n" , devID );
-    syslog.print( "Firmware version URL:" );
-    syslog.println( fwVersionURL );
+    syslog.printf( "Firmware version URL: %s\n",fwVersionURL );
 
     HTTPClient httpClient;
     httpClient.begin(client, fwVersionURL );
