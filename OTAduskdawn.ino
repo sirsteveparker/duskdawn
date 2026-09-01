@@ -139,12 +139,29 @@ void checkForUpdates()
           Log.printf("deserializeJson() failed: %s\n", error.c_str());
           return;
       }
-      String newModel = doc["Model"];
-      String newVersion = doc["Version"];
-      Log.printf(" Model Number: %s vs %s\n ",String(MODEL),newModel);
+      // New format: Expect a boolean "Force" (default false) and a "Version" string
+      bool forceUpdate = false;
+      if (doc.containsKey("Force")) {
+        if (doc["Force"].is<bool>()) {
+          forceUpdate = doc["Force"].as<bool>();
+        } else {
+          String f = doc["Force"].as<String>();
+          f.toLowerCase();
+          forceUpdate = (f == "true" || f == "1");
+        }
+      }
+      String newVersion = "";
+      if (doc.containsKey("Version")) newVersion = doc["Version"].as<String>();
+
+      Log.printf(" Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
       Log.printf(" Firmware version: %s vs %s\n ",String(VERSION),newVersion);
-      if ( ! newVersion.equals( String(VERSION))) {
-        Log.println( "Preparing to update" );
+
+      if ( forceUpdate || ( newVersion.length() > 0 && ! newVersion.equals( String(VERSION)))) {
+        if (forceUpdate) {
+          Log.println("Forced update requested by server (.ver contains Force=true). Proceeding to update.");
+        } else {
+          Log.println( "Preparing to update (version mismatch)" );
+        }
         // Constuct URL for new firmware
         String fwImageURL = fwURL;
         fwImageURL.concat( ".bin" );
@@ -164,10 +181,10 @@ void checkForUpdates()
                Log.println("HTTP_UPDATE_NO_UPDATES");
                break;
         } // end of switch
-      } // end of: if ( ! newVersion.equals( VERSION ))
-   
+      } // end of: if ( forceUpdate || version mismatch)
+     
       else {   // newVersion.equals ( VERSION ) 
-        Log.println( "Already on latest version" );
+        Log.println( "Already on latest version and no force flag set" );
       }
     } //end of:  if ( httpCode == 200 )
     else  { // httpCode !== 200
@@ -364,5 +381,5 @@ void loop()
 	Log.stop();
 	delay(10000);
         resetFunc(); 
-    }	
+    } 	
 }
