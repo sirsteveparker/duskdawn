@@ -7,7 +7,7 @@ duskdawn is a lightweight ESP8266 firmware to control an outdoor/light relay bas
 - Automatic on/off based on nautical sunset + configurable rise/bed times.
 - Optional OLED (SSD1306) status display.
 - Minimal REST UI: `GET /status` (shows current state, override form), `POST /status` (force ON/OFF).
-- HTTP OTA updates: checks a JSON `.ver` file on a local host and downloads a `.bin` when the version differs.
+- HTTP OTA updates: checks a JSON `.ver` file on a local host and downloads a `.bin` when the version differs or when the server requests a forced update.
 - Optional syslog output (send logs to a local syslog server).
 - Weekly self-reboot to reduce long‑running instability.
 
@@ -60,27 +60,46 @@ Install these Arduino/ESP8266 libraries (used by the sketch):
    - `MODEL`, `VERSION` — firmware model and version strings used for OTA checks
    - `host`, `fwURLLoc`, `httpPort` — host and path where OTA metadata/images are served
 
-## Sample `.ver` JSON expected by OTA checker
+## Sample `.ver` JSON expected by OTA checker (NEW)
 
-The firmware checks a URL constructed as: `http://<host><fwURLLoc><devID>.ver`
-That `.ver` file must contain JSON like:
+The firmware checks a URL constructed as: `http://<host><fwURLLoc><devID>.ver`.
+
+The `.ver` file now uses a small schema that supports server-driven forced updates. The expected JSON keys are:
+
+- `Force` (boolean) — optional; when true the device will download and apply the `.bin` even if the `Version` matches the running firmware. Default: `false`.
+- `Version` (string) — the firmware version label. Devices still update when this differs from the running `VERSION` constant.
+
+Examples:
+
+Default (no forced update):
 
 ```json
 {
-  "Model": "1",
+  "Force": false,
   "Version": "1.0.11"
 }
 ```
 
-If `Version` differs from the running `VERSION` constant, the device will download
-`http://<host><fwURLLoc><devID>.bin` and attempt an HTTP OTA update.
+Force an update for a specific device (server-side):
+
+```json
+{
+  "Force": true,
+  "Version": "1.0.11"
+}
+```
+
+Notes:
+- The device accepts `Force` as a boolean or string (`true`/`false` or `"1"`/`"0"`) for compatibility with simple servers.
+- The device constructs the firmware image URL as `http://<host><fwURLLoc><devID>.bin` and attempts an HTTP OTA update when `Force` is `true` or when `Version` differs.
+- After a forced update, clear `Force` on the server (set to `false` or serve a new `.ver`) to avoid repeated forced downloads.
 
 ## How it works (brief)
 
 - On boot: connects to WiFi, initializes logging, optional OLED, sets current time via NTP.
 - Every loop: calculates today's sunrise/sunset (civil and nautical values via `sunset.h`). Uses nautical sunset and configured `RISETIME`/`BEDTIME` to decide whether the relay should be ON or OFF.
 - Override: `requiredState` (set via `POST /status`) forces the relay ON/OFF until cleared.
-- The device checks the OTA version URL each loop; if a newer version exists it downloads the `.bin` and updates itself.
+- The device checks the OTA version URL each loop; if a newer version exists or the server sets `Force: true` it downloads the `.bin` and updates itself.
 - The device calls `reset()` once per 7 days (weekly reboot).
 
 ## Build & upload
