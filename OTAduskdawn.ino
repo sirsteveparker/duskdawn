@@ -128,7 +128,7 @@ void checkForUpdates()
     fwURL.concat(fwURLLoc);
     fwURL.concat(devID);
     String fwVersionURL = fwURL;
-    fwVersionURL.concat( ".ver" );
+    fwVersionURL.concat(".ver");
     syslog.println( "Checking for firmware updates." );
     syslog.printf( "chipID: %s\n" , devID );
     syslog.printf( "Firmware version URL: %s\n",fwVersionURL );
@@ -159,8 +159,8 @@ void checkForUpdates()
       String newVersion = "";
       if (doc.containsKey("Version")) newVersion = doc["Version"].as<String>();
 
-      syslog.printf(" Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
-      syslog.printf(" Firmware version: %s vs %s\n ",String(VERSION),newVersion);
+      syslog.printf("Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
+      syslog.printf("Firmware version: %s vs %s\n",String(VERSION),newVersion);
 
       if ( forceUpdate || ( newVersion.length() > 0 && ! newVersion.equals( String(VERSION)))) {
         if (forceUpdate) {
@@ -190,7 +190,7 @@ void checkForUpdates()
       } // end of: if ( forceUpdate || version mismatch)
      
       else {   // newVersion.equals ( VERSION ) 
-        syslog.println( "Already on latest version and no force flag set" );
+        syslog.println("Already on latest version and no force flag set" );
       }
     } //end of:  if ( httpCode == 200 )
     else  { // httpCode !== 200
