@@ -9,6 +9,7 @@ Updates:
 16 Mar 2026 - Add Over The Air updates v1.0.9
 24 Aug 2026 - Use Nautical Sunset instead of Civil v1.0.10
  1 Sep 2026 - Switch to use Pico-Syslog
+ 3 Sep 2026 - Switch to use tcpsyslog
 */
 
 #include <ESP8266WiFi.h>
@@ -25,6 +26,13 @@ Updates:
 #include <ESP8266HTTPClient.h>
 #include <ESP8266httpUpdate.h>
 
+#if SCREEN == 1
+SSD1306Wire  display(0x3C, D1, D2);   // Initialize OLED display
+#define RELAY D3
+#else       
+#define RELAY D1
+#endif
+
 #if defined(ESP32)
 #include <WiFi.h>
 #elif defined(ESP8266)
@@ -35,16 +43,8 @@ Updates:
 
 PicoSyslog::Logger syslog("Duskdawn");
 
-#include "API.hpp"
 #include "Server.hpp"
 #include "config.hpp"
-
-#if SCREEN == 1
-SSD1306Wire  display(0x3C, D1, D2);   // Initialize OLED display
-#define RELAY D3
-#else       
-#define RELAY D1
-#endif
 
 time_t nowtime;
 bool screenOn=true;
@@ -92,7 +92,7 @@ String twoDigits(int digits)
     }
 }
 
-bool onoroff()
+bool getRelay()
 {
     if (digitalRead(RELAY) == HIGH) {
        return true;
@@ -100,6 +100,11 @@ bool onoroff()
        return false;
     }
 }
+
+  void setRelay(bool state)
+  {
+    digitalWrite(RELAY, state ? HIGH : LOW);
+  }
 
 #if SCREEN == 1
 void screenWrite() {
@@ -130,8 +135,8 @@ void checkForUpdates()
     String fwVersionURL = fwURL;
     fwVersionURL.concat(".ver");
     syslog.println( "Checking for firmware updates." );
-    syslog.printf( "chipID: %s\n" , devID );
-    syslog.printf( "Firmware version URL: %s\n",fwVersionURL );
+    syslog.printf( "chipID: %s\n" , devID.c_str() );
+    syslog.printf( "Firmware version URL: %s\n", fwVersionURL.c_str() );
 
     HTTPClient httpClient;
     httpClient.begin(client, fwVersionURL );
@@ -159,7 +164,7 @@ void checkForUpdates()
       String newVersion = "";
       if (doc.containsKey("Version")) newVersion = doc["Version"].as<String>();
 
-      syslog.printf("Force flag in .ver: %s\n", forceUpdate ? "true" : "false");
+      syslog.printf("ForceUpdate flag in .ver: %s\n", forceUpdate ? "true" : "false");
       syslog.printf("Firmware version: %s vs %s\n",String(VERSION),newVersion);
 
       if ( forceUpdate || ( newVersion.length() > 0 && ! newVersion.equals( String(VERSION)))) {
@@ -244,7 +249,6 @@ void setup()
     sun.setPosition(LATITUDE, LONGITUDE, TIMEZONE);
     sun.setTZOffset(TIMEZONE);
     pinMode(RELAY,OUTPUT);
-    digitalWrite(RELAY, LOW);
     configTime(TIMEZONE * 3600, DST * 3600, "pool.ntp.org", "time.nist.gov");
     configTzTime("GMT0BST,M3.5.0/2,M10.5.0/3","pool.ntp.org");
     syslog.println("Gathering time info");
@@ -254,11 +258,11 @@ void setup()
     delay(3000);
     syslog.println(String("MyIP:" + WiFi.localIP().toString()));
     syslog.println("Duskdawn API control starting....");
-    currentState = onoroff();
+    currentState = getRelay();
     syslog.printf("REG currentState: %d\n",currentState);
+    setRelay(false);
     requiredState = false;
     syslog.printf("REG requiredState: %d\n",requiredState);
-
     InitServer();    
 }
 
@@ -327,7 +331,7 @@ void loop()
     #if SCREEN == 1
         line5 = String("Status: Force");
     #endif
-        digitalWrite(RELAY, HIGH);
+        setRelay(true);
     } 
     else if (mpm >= nauticalsunset && mpm < BEDTIME ) {
         syslog.printf("Status: ON #1 , sunrise: %d\n",sunrise);
@@ -336,7 +340,7 @@ void loop()
     #if SCREEN == 1
         line5 = String("Status: ON #1");
     #endif
-        digitalWrite(RELAY, HIGH);
+        setRelay(true);
     } 
     else if (mpm > RISETIME && mpm  <  sunrise) {
         syslog.printf("Status: ON #2 , sunrise: %d\n",sunrise);
@@ -345,7 +349,7 @@ void loop()
     #if SCREEN == 1
         line5 = String("Status: ON #2");
     #endif
-        digitalWrite(RELAY, HIGH);
+        setRelay(true);
     } 
     else {
         syslog.printf("Status: OFF , sunset: %d\n",nauticalsunset);
@@ -354,10 +358,10 @@ void loop()
     #if SCREEN == 1
         line5 = String("Status: OFF");
     #endif
-        digitalWrite(RELAY, LOW);
+        setRelay(false);
     }
 
-    currentState = onoroff();
+    currentState = getRelay();
     syslog.printf("REG requiredState: %d, currentState: %d\n",requiredState,currentState);
 
     #if SCREEN == 1
